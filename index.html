@@ -52,11 +52,40 @@
   
   .btn-bar { display: flex; justify-content: flex-end; margin-bottom: 8px; }
   .btn-print { background: #059669; color: white; border: none; padding: 7px 14px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 12px; }
+  
+  /* ======================================================== */
+  /* MẶT NẠ MÁY IN: TỰ ĐỘNG CHUYỂN NỀN TRẮNG ĐỂ TIẾT KIỆM MỰC */
+  /* ======================================================== */
   @media print { 
     .btn-bar { display: none; } 
-    .a4-page { padding: 15px; background: #0F172A !important; } 
-    .page-break { page-break-before: always; }
+    .page-break { page-break-before: always; margin-top: 0; }
+    
+    body, .a4-page, .p2-container, .card, .p2-profile, .matrix-box .cell, 
+    .body-segment-wrapper, .weight-circle, .p2-weight-circle { 
+      background: #FFFFFF !important; 
+      background-color: #FFFFFF !important; 
+      background-image: none !important; 
+    }
+    
+    body, .header-title, .user-name, .p2-brand, .p2-title, .p2-big-val, 
+    .metric-item, .kizen-table td, div, span, b, .profile-stats, .measure-time, .logo-slogan {
+      color: #111827 !important;
+    }
+    
+    .score-val, .score-val span { color: #059669 !important; }
+    .tag-title { color: #1E3A8A !important; border-left-color: #3B82F6 !important; }
+    .kizen-table th { background: #E2E8F0 !important; color: #111827 !important; }
+    .cell-active { background: #2563EB !important; color: #FFFFFF !important; }
+    .p2-section-title { background: #E2E8F0 !important; color: #111827 !important; }
+    
+    .card, .p2-container, .body-segment-wrapper, .p2-profile { 
+      border: 1px solid #94A3B8 !important; 
+      box-shadow: none !important; 
+    }
+    
+    .p2-col-right img { filter: none !important; }
   }
+  /* ================= HẾT PHẦN MÁY IN ================= */
 
   .main-layout { display: flex; gap: 12px; }
   .col-left { width: 44%; display: flex; flex-direction: column; gap: 8px; }
@@ -265,7 +294,6 @@
     </div>
   </div>
 
-  <img src="assets/footer_device.png" class="footer-img" alt="Thiết bị CF577">
 </div>
 
 <!-- ========================================================= -->
@@ -373,7 +401,7 @@
         </div>
       </div>
 
-      <!-- Hình người y tế Trang 2 -->
+      <!-- Hình người y tế Trang 2 (Có lọc màu nền tối & chữ nổi) -->
       <div style="position: relative; border: 1px solid #334155; border-radius: 8px; overflow: hidden; font-size: 7.2px; color: #FFFFFF !important; line-height: 1.35; background: #0F172A; padding: 2px;">
         <img src="assets/body_segment_p2.png" style="width: 100%; display: block; filter: invert(0.92) hue-rotate(180deg) contrast(1.3);" alt="Phân đoạn Trang 2">
         
