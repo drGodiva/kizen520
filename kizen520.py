@@ -96,7 +96,8 @@ def extract_data_from_image(image_bytes, api_key):
 # GIAO DIỆN XỬ LÝ CHÍNH
 # ==========================================
 with st.sidebar:
-    st.image("assets/logo_mba.png", use_column_width=True) if os.path.exists("assets/logo_mba.png") else None
+    if os.path.exists("assets/logo_mba.png"):
+        st.image("assets/logo_mba.png", use_container_width=True)
     st.header("⚙️ Trạng thái hệ thống")
     st.success("✅ Đã khóa bảo mật API Key")
     st.success("✅ Đã kết nối Email phungtam5965")
