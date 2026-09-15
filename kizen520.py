@@ -11,6 +11,7 @@ from weasyprint import HTML
 import os
 import streamlit.components.v1 as components
 import fitz  # PyMuPDF để bóc tách PDF thành ảnh
+import re    # Thư viện gọt chữ thừa của AI
 
 # ==========================================
 # CẤU HÌNH TRANG & CSS THƯƠNG HIỆU MBA
@@ -46,13 +47,14 @@ except KeyError:
 sender_email = "phungtam5965@gmail.com"
 
 # ==========================================
-# HÀM XỬ LÝ NHIỀU ẢNH VÀ TRÍCH XUẤT OPENAI
+# HÀM XỬ LÝ NHIỀU ẢNH VÀ TRÍCH XUẤT OPENAI BẢO MẬT KÉP
 # ==========================================
 def extract_data_from_images(image_bytes_list, api_key):
     client = OpenAI(api_key=api_key)
     
     prompt = """
-    Bạn là một chuyên gia phân tích chỉ số cơ thể y tế. Hãy đọc các ảnh báo cáo Kizen 520 được cung cấp và trả về MỘT CHUỖI JSON CHUẨN DUY NHẤT (không markdown, không text dư thừa) chứa các key sau:
+    Bạn là một chuyên gia phân tích chỉ số cơ thể y tế. BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON CHUẨN (JSON OBJECT). 
+    Không giải thích, không dùng markdown code block, chỉ trả về JSON với các key sau (chữ thường):
     "name", "time", "age", "height", "score", "weight", "water", "protein", "mineral", "fat", "bmi", "fatrate", "vfat", "bmr", "muscle", "bioage", "stdweight", "ctrlweight", "ctrlfat".
     Hãy tổng hợp số liệu từ tất cả các trang ảnh. Nếu không thấy giá trị nào, điền "0".
     """
@@ -65,13 +67,26 @@ def extract_data_from_images(image_bytes_list, api_key):
         b64_image = base64.b64encode(img_bytes).decode('utf-8')
         content_list.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_image}"}})
     
+    # Gọi AI với thuộc tính ÉP BUỘC JSON
     response = client.chat.completions.create(
         model="gpt-4o",
+        response_format={ "type": "json_object" }, # <--- CHÌA KHÓA CHỐNG LỖI HIỆU QUẢ NHẤT
         messages=[{"role": "user", "content": content_list}]
     )
     
-    result_text = response.choices[0].message.content.replace("```json", "").replace("```", "").strip()
-    return json.loads(result_text)
+    result_text = response.choices[0].message.content.strip()
+    
+    # Lớp bảo vệ số 2: Gọt sạch râu ria bằng Regex
+    match = re.search(r'\{.*\}', result_text, re.DOTALL)
+    if match:
+        result_text = match.group(0)
+        
+    try:
+        return json.loads(result_text)
+    except Exception as e:
+        st.error(f"⚠️ Bộ não AI đã trích xuất lỗi cú pháp: {e}")
+        st.code(result_text, language='json')
+        return {}
 
 # ==========================================
 # GIAO DIỆN XỬ LÝ CHÍNH
@@ -125,93 +140,95 @@ if uploaded_files:
                     try:
                         # Gọi hàm trích xuất
                         extracted_data = extract_data_from_images(processed_images, openai_api_key)
-                        st.success("✅ Trích xuất thành công! Dữ liệu đã được nạp vào báo cáo.")
                         
-                        # Đọc file HTML gốc
-                        with open("index.html", "r", encoding="utf-8") as f:
-                            html_content = f.read()
-                        
-                        # Tiêm dữ liệu vào HTML
-                        injection_script = f"""
-                        <script>
-                            setTimeout(() => {{
-                                const data = {json.dumps(extracted_data)};
-                                const mapping = {{
-                                    'val-name': 'name', 'p2-name': 'name',
-                                    'val-age': 'age', 'p2-age': 'age',
-                                    'val-height': 'height', 'p2-height': 'height',
-                                    'val-score': 'score', 'p2-score': 'score',
-                                    'val-weight': 'weight', 'p2-weight': 'weight', 'lbl-weight': 'weight',
-                                    'val-water': 'water', 'p2-water': 'water', 'p2-water-tbl': 'water',
-                                    'val-protein': 'protein', 'p2-pro': 'protein',
-                                    'val-mineral': 'mineral', 'p2-min': 'mineral',
-                                    'val-fat': 'fat', 'p2-fat': 'fat', 'lbl-fat': 'fat',
-                                    'lbl-bmi': 'bmi', 'p2-bmi': 'bmi',
-                                    'lbl-fatrate': 'fatrate', 'p2-fatrate': 'fatrate',
-                                    'val-vfat': 'vfat', 'p2-vfat': 'vfat',
-                                    'val-bmr': 'bmr', 'p2-bmr': 'bmr',
-                                    'lbl-muscle': 'muscle', 'p2-muscle': 'muscle', 'p2-muscle-block': 'muscle',
-                                    'val-bioage': 'bioage', 'p2-bioage': 'bioage',
-                                    'val-stdweight': 'stdweight', 'p2-stdweight': 'stdweight',
-                                    'val-ctrlweight': 'ctrlweight', 'p2-ctrlweight': 'ctrlweight',
-                                    'val-ctrlfat': 'ctrlfat', 'p2-ctrlfat': 'ctrlfat'
-                                }};
-                                for (const [id, key] of Object.entries(mapping)) {{
-                                    const el = document.getElementById(id);
-                                    if (el && data[key]) el.textContent = data[key];
-                                }}
-                            }}, 500);
-                        </script>
-                        """
-                        
-                        final_html = html_content.replace("</body>", injection_script + "</body>")
-                        
-                        # Hiển thị bản xem trước
-                        st.markdown("### 📄 BẢN XEM TRƯỚC BÁO CÁO (Nền Đen)")
-                        components.html(final_html, height=800, scrolling=True)
-                        
-                        # Chuyển đổi thành PDF bằng WeasyPrint
-                        with st.spinner("🖨️ Đang đóng gói file PDF bản in nền trắng..."):
-                            pdf_bytes = HTML(string=final_html, base_url=os.path.dirname(os.path.abspath(__file__))).write_pdf()
+                        if extracted_data: # Chắc chắn có data mới ráp vào HTML
+                            st.success("✅ Trích xuất thành công! Dữ liệu đã được nạp vào báo cáo.")
                             
-                            st.download_button(
-                                label="⬇️ TẢI PDF BÁO CÁO",
-                                data=pdf_bytes,
-                                file_name=f"Bao_Cao_Kizen_{extracted_data.get('name', 'KhachHang')}.pdf",
-                                mime="application/pdf",
-                            )
+                            # Đọc file HTML gốc
+                            with open("index.html", "r", encoding="utf-8") as f:
+                                html_content = f.read()
                             
-                        # Gửi Email
-                        st.markdown("---")
-                        st.subheader("✉️ Gửi tự động cho Khách hàng")
-                        customer_email = st.text_input("Nhập Email của khách hàng:")
-                        if st.button("🚀 GỬI BÁO CÁO QUA EMAIL"):
-                            if not customer_email:
-                                st.error("⚠️ Vui lòng nhập email khách hàng!")
-                            else:
-                                try:
-                                    msg = MIMEMultipart()
-                                    msg['From'] = sender_email
-                                    msg['To'] = customer_email
-                                    msg['Subject'] = "Mastering Biology Academy - Báo cáo chỉ số cơ thể Kizen 520"
-                                    
-                                    body = f"Chào anh/chị {extracted_data.get('name', '')},\n\nMastering Biology Academy xin gửi đính kèm bản báo cáo phân tích chỉ số cơ thể chuyên sâu Kizen 520.\n\nTrân trọng,\nĐội ngũ chuyên gia MBA."
-                                    msg.attach(MIMEText(body, 'plain'))
-                                    
-                                    part = MIMEBase('application', 'octet-stream')
-                                    part.set_payload(pdf_bytes)
-                                    encoders.encode_base64(part)
-                                    part.add_header('Content-Disposition', f'attachment; filename="BaoCao_Kizen520.pdf"')
-                                    msg.attach(part)
-                                    
-                                    server = smtplib.SMTP('smtp.gmail.com', 587)
-                                    server.starttls()
-                                    server.login(sender_email, sender_password)
-                                    server.send_message(msg)
-                                    server.quit()
-                                    st.success(f"✅ Đã gửi email thành công tới {customer_email}!")
-                                except Exception as e:
-                                    st.error(f"❌ Lỗi gửi email: {e}")
-                                    
+                            # Tiêm dữ liệu vào HTML
+                            injection_script = f"""
+                            <script>
+                                setTimeout(() => {{
+                                    const data = {json.dumps(extracted_data)};
+                                    const mapping = {{
+                                        'val-name': 'name', 'p2-name': 'name',
+                                        'val-age': 'age', 'p2-age': 'age',
+                                        'val-height': 'height', 'p2-height': 'height',
+                                        'val-score': 'score', 'p2-score': 'score',
+                                        'val-weight': 'weight', 'p2-weight': 'weight', 'lbl-weight': 'weight',
+                                        'val-water': 'water', 'p2-water': 'water', 'p2-water-tbl': 'water',
+                                        'val-protein': 'protein', 'p2-pro': 'protein',
+                                        'val-mineral': 'mineral', 'p2-min': 'mineral',
+                                        'val-fat': 'fat', 'p2-fat': 'fat', 'lbl-fat': 'fat',
+                                        'lbl-bmi': 'bmi', 'p2-bmi': 'bmi',
+                                        'lbl-fatrate': 'fatrate', 'p2-fatrate': 'fatrate',
+                                        'val-vfat': 'vfat', 'p2-vfat': 'vfat',
+                                        'val-bmr': 'bmr', 'p2-bmr': 'bmr',
+                                        'lbl-muscle': 'muscle', 'p2-muscle': 'muscle', 'p2-muscle-block': 'muscle',
+                                        'val-bioage': 'bioage', 'p2-bioage': 'bioage',
+                                        'val-stdweight': 'stdweight', 'p2-stdweight': 'stdweight',
+                                        'val-ctrlweight': 'ctrlweight', 'p2-ctrlweight': 'ctrlweight',
+                                        'val-ctrlfat': 'ctrlfat', 'p2-ctrlfat': 'ctrlfat'
+                                    }};
+                                    for (const [id, key] of Object.entries(mapping)) {{
+                                        const el = document.getElementById(id);
+                                        if (el && data[key]) el.textContent = data[key];
+                                    }}
+                                }}, 500);
+                            </script>
+                            """
+                            
+                            final_html = html_content.replace("</body>", injection_script + "</body>")
+                            
+                            # Hiển thị bản xem trước
+                            st.markdown("### 📄 BẢN XEM TRƯỚC BÁO CÁO (Nền Đen)")
+                            components.html(final_html, height=800, scrolling=True)
+                            
+                            # Chuyển đổi thành PDF bằng WeasyPrint
+                            with st.spinner("🖨️ Đang đóng gói file PDF bản in nền trắng..."):
+                                pdf_bytes = HTML(string=final_html, base_url=os.path.dirname(os.path.abspath(__file__))).write_pdf()
+                                
+                                st.download_button(
+                                    label="⬇️ TẢI PDF BÁO CÁO",
+                                    data=pdf_bytes,
+                                    file_name=f"Bao_Cao_Kizen_{extracted_data.get('name', 'KhachHang')}.pdf",
+                                    mime="application/pdf",
+                                )
+                                
+                            # Gửi Email
+                            st.markdown("---")
+                            st.subheader("✉️ Gửi tự động cho Khách hàng")
+                            customer_email = st.text_input("Nhập Email của khách hàng:")
+                            if st.button("🚀 GỬI BÁO CÁO QUA EMAIL"):
+                                if not customer_email:
+                                    st.error("⚠️ Vui lòng nhập email khách hàng!")
+                                else:
+                                    try:
+                                        msg = MIMEMultipart()
+                                        msg['From'] = sender_email
+                                        msg['To'] = customer_email
+                                        msg['Subject'] = "Mastering Biology Academy - Báo cáo chỉ số cơ thể Kizen 520"
+                                        
+                                        body = f"Chào anh/chị {extracted_data.get('name', '')},\n\nMastering Biology Academy xin gửi đính kèm bản báo cáo phân tích chỉ số cơ thể chuyên sâu Kizen 520.\n\nTrân trọng,\nĐội ngũ chuyên gia MBA."
+                                        msg.attach(MIMEText(body, 'plain'))
+                                        
+                                        part = MIMEBase('application', 'octet-stream')
+                                        part.set_payload(pdf_bytes)
+                                        encoders.encode_base64(part)
+                                        part.add_header('Content-Disposition', f'attachment; filename="BaoCao_Kizen520.pdf"')
+                                        msg.attach(part)
+                                        
+                                        server = smtplib.SMTP('smtp.gmail.com', 587)
+                                        server.starttls()
+                                        server.login(sender_email, sender_password)
+                                        server.send_message(msg)
+                                        server.quit()
+                                        st.success(f"✅ Đã gửi email thành công tới {customer_email}!")
+                                    except Exception as e:
+                                        st.error(f"❌ Lỗi gửi email: {e}")
+                                        
                     except Exception as e:
-                        st.error(f"❌ Lỗi trong quá trình xử lý: {e}")
+                        st.error(f"❌ Lỗi trong quá trình xử lý tổng thể: {e}")
