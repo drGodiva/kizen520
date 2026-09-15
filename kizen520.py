@@ -52,11 +52,20 @@ sender_email = "phungtam5965@gmail.com"
 def extract_data_from_images(image_bytes_list, api_key):
     client = OpenAI(api_key=api_key)
     
+    # Câu lệnh thép dành cho AI (Prompt)
     prompt = """
-    Bạn là một chuyên gia phân tích chỉ số cơ thể y tế. BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON CHUẨN (JSON OBJECT). 
-    Không giải thích, không dùng markdown code block, chỉ trả về JSON với các key sau (chữ thường):
-    "name", "time", "age", "height", "score", "weight", "water", "protein", "mineral", "fat", "bmi", "fatrate", "vfat", "bmr", "muscle", "bioage", "stdweight", "ctrlweight", "ctrlfat".
-    Hãy tổng hợp số liệu từ tất cả các trang ảnh. Nếu không thấy giá trị nào, điền "0".
+    Bạn là chuyên gia phân tích chỉ số cơ thể y tế. BẮT BUỘC TRẢ VỀ ĐỊNH DẠNG JSON CHUẨN (JSON OBJECT).
+    Đọc thật kỹ toàn bộ ảnh (đặc biệt quét thật kỹ khu vực trên cùng của trang báo cáo) để lấy chính xác:
+    - "name": Tên khách hàng (Thường nằm to nhất ở góc trên).
+    - "height": Chiều cao (Số đo cm).
+    - "weight": Cân nặng (Số đo kg, thường là con số to nhất ở Trang 1 và Trang 2).
+    - "age": Tuổi.
+    - Các key khác: "time", "score", "water", "protein", "mineral", "fat", "bmi", "fatrate", "vfat", "bmr", "muscle", "bioage", "stdweight", "ctrlweight", "ctrlfat".
+    
+    Quy tắc thép:
+    1. Chỉ trả về JSON, tuyệt đối không giải thích hay bình luận thêm.
+    2. Chỉ lấy phần con số (ví dụ: 65.5), TUYỆT ĐỐI KHÔNG kèm chữ "kg", "%", "cm" hay "Tuổi" vào dữ liệu.
+    3. TUYỆT ĐỐI KHÔNG được điền "0" cho Tên, Chiều cao, Cân nặng, Tuổi. Hãy tìm kỹ bằng mọi giá. Nếu không có số thập phân thì giữ nguyên số nguyên.
     """
     
     # Nạp nội dung prompt
@@ -70,13 +79,13 @@ def extract_data_from_images(image_bytes_list, api_key):
     # Gọi AI với thuộc tính ÉP BUỘC JSON
     response = client.chat.completions.create(
         model="gpt-4o",
-        response_format={ "type": "json_object" }, # <--- CHÌA KHÓA CHỐNG LỖI HIỆU QUẢ NHẤT
+        response_format={ "type": "json_object" }, 
         messages=[{"role": "user", "content": content_list}]
     )
     
     result_text = response.choices[0].message.content.strip()
     
-    # Lớp bảo vệ số 2: Gọt sạch râu ria bằng Regex
+    # Lớp bảo vệ số 2: Gọt sạch râu ria bằng Regex để tránh lỗi char 0
     match = re.search(r'\{.*\}', result_text, re.DOTALL)
     if match:
         result_text = match.group(0)
@@ -141,8 +150,8 @@ if uploaded_files:
                         # Gọi hàm trích xuất
                         extracted_data = extract_data_from_images(processed_images, openai_api_key)
                         
-                        if extracted_data: # Chắc chắn có data mới ráp vào HTML
-                            st.success("✅ Trích xuất thành công! Dữ liệu đã được nạp vào báo cáo.")
+                        if extracted_data: 
+                            st.success(f"✅ Trích xuất thành công dữ liệu của khách hàng: **{extracted_data.get('name', 'Chưa rõ tên')}**!")
                             
                             # Đọc file HTML gốc
                             with open("index.html", "r", encoding="utf-8") as f:
@@ -198,37 +207,57 @@ if uploaded_files:
                                     mime="application/pdf",
                                 )
                                 
-                            # Gửi Email
-                            st.markdown("---")
-                            st.subheader("✉️ Gửi tự động cho Khách hàng")
-                            customer_email = st.text_input("Nhập Email của khách hàng:")
-                            if st.button("🚀 GỬI BÁO CÁO QUA EMAIL"):
-                                if not customer_email:
-                                    st.error("⚠️ Vui lòng nhập email khách hàng!")
-                                else:
-                                    try:
-                                        msg = MIMEMultipart()
-                                        msg['From'] = sender_email
-                                        msg['To'] = customer_email
-                                        msg['Subject'] = "Mastering Biology Academy - Báo cáo chỉ số cơ thể Kizen 520"
-                                        
-                                        body = f"Chào anh/chị {extracted_data.get('name', '')},\n\nMastering Biology Academy xin gửi đính kèm bản báo cáo phân tích chỉ số cơ thể chuyên sâu Kizen 520.\n\nTrân trọng,\nĐội ngũ chuyên gia MBA."
-                                        msg.attach(MIMEText(body, 'plain'))
-                                        
-                                        part = MIMEBase('application', 'octet-stream')
-                                        part.set_payload(pdf_bytes)
-                                        encoders.encode_base64(part)
-                                        part.add_header('Content-Disposition', f'attachment; filename="BaoCao_Kizen520.pdf"')
-                                        msg.attach(part)
-                                        
-                                        server = smtplib.SMTP('smtp.gmail.com', 587)
-                                        server.starttls()
-                                        server.login(sender_email, sender_password)
-                                        server.send_message(msg)
-                                        server.quit()
-                                        st.success(f"✅ Đã gửi email thành công tới {customer_email}!")
-                                    except Exception as e:
-                                        st.error(f"❌ Lỗi gửi email: {e}")
+                            # Lưu file PDF tạm để gửi email
+                            with open("temp_report.pdf", "wb") as f:
+                                f.write(pdf_bytes)
+                            st.session_state['pdf_ready'] = True
+                            st.session_state['client_name'] = extracted_data.get('name', 'Khách hàng')
                                         
                     except Exception as e:
                         st.error(f"❌ Lỗi trong quá trình xử lý tổng thể: {e}")
+
+# ==========================================
+# KHỐI GỬI EMAIL (NẰM DƯỚI CÙNG TRANG)
+# ==========================================
+if st.session_state.get('pdf_ready'):
+    st.markdown("---")
+    st.header("✉️ GỬI TỰ ĐỘNG CHO KHÁCH HÀNG")
+    st.info("Báo cáo đã sẵn sàng. Thầy vui lòng nhập Email khách hàng để gửi đi.")
+    
+    col_em1, col_em2 = st.columns([2, 1])
+    with col_em1:
+        customer_email = st.text_input("Nhập Email của khách hàng:")
+    with col_em2:
+        st.write("")
+        st.write("")
+        if st.button("🚀 GỬI BÁO CÁO QUA EMAIL", use_container_width=True):
+            if not customer_email:
+                st.error("⚠️ Vui lòng nhập email khách hàng!")
+            else:
+                try:
+                    with st.spinner("Đang kết nối với máy chủ Email..."):
+                        msg = MIMEMultipart()
+                        msg['From'] = sender_email
+                        msg['To'] = customer_email
+                        msg['Subject'] = f"Mastering Biology Academy - Báo cáo Kizen 520 của {st.session_state.get('client_name')}"
+                        
+                        body = f"Chào anh/chị {st.session_state.get('client_name')},\n\nMastering Biology Academy xin gửi đính kèm bản báo cáo phân tích chỉ số cơ thể chuyên sâu Kizen 520.\n\nTrân trọng,\nĐội ngũ chuyên gia MBA - Người Mài Rìu."
+                        msg.attach(MIMEText(body, 'plain'))
+                        
+                        # Đọc lại file PDF tạm
+                        with open("temp_report.pdf", "rb") as f:
+                            part = MIMEBase('application', 'octet-stream')
+                            part.set_payload(f.read())
+                            encoders.encode_base64(part)
+                            part.add_header('Content-Disposition', f'attachment; filename="BaoCao_Kizen520.pdf"')
+                            msg.attach(part)
+                        
+                        server = smtplib.SMTP('smtp.gmail.com', 587)
+                        server.starttls()
+                        server.login(sender_email, sender_password)
+                        server.send_message(msg)
+                        server.quit()
+                        
+                        st.success(f"✅ Đã gửi Email kèm file PDF thành công tới {customer_email}!")
+                except Exception as e:
+                    st.error(f"❌ Lỗi gửi email: Vui lòng kiểm tra lại App Password hoặc kết nối mạng. (Chi tiết: {e})")
