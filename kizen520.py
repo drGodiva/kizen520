@@ -8,39 +8,70 @@ from email.mime.text import MIMEText
 from email import encoders
 from openai import OpenAI
 from weasyprint import HTML
+import os
 import streamlit.components.v1 as components
 
-# Cấu hình trang Streamlit
-st.set_page_config(page_title="Hệ thống Kizen 520 - MBA", layout="wide")
+# ==========================================
+# CẤU HÌNH TRANG & CSS THƯƠNG HIỆU MBA
+# ==========================================
+st.set_page_config(page_title="Hệ thống Kizen 520 - MBA", layout="wide", page_icon="🪓")
 
-st.title("🪓 MASTERING BIOLOGY ACADEMY - KIZEN 520 AUTOMATION")
-st.markdown("Hệ thống trích xuất AI, tạo báo cáo PDF và gửi Email tự động.")
+st.markdown("""
+<style>
+    /* Nền chính màu Xanh Lục Bảo đậm */
+    [data-testid="stAppViewContainer"] {
+        background-color: #012B1D; 
+        color: #F8FAFC;
+    }
+    /* Thanh bên màu Xanh Lục Bảo nhạt hơn một chút, viền Vàng Kim */
+    [data-testid="stSidebar"] {
+        background-color: #004D40;
+        border-right: 2px solid #D4AF37;
+    }
+    /* Các tiêu đề màu Vàng Kim */
+    h1, h2, h3, h4, h5, h6, .st-emotion-cache-10trblm { 
+        color: #D4AF37 !important; 
+    }
+    /* Nút bấm màu Vàng Kim, chữ xanh */
+    .stButton>button {
+        background-color: #D4AF37;
+        color: #012B1D;
+        font-weight: 900;
+        border: none;
+        border-radius: 6px;
+        transition: all 0.3s;
+    }
+    .stButton>button:hover {
+        background-color: #F5E6BE;
+        color: #000000;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.title("🪓 MASTERING BIOLOGY ACADEMY - KIZEN 520")
+st.markdown("**Hệ thống trích xuất AI, tạo báo cáo PDF và gửi Email tự động.**")
 
 # ==========================================
-# PHẦN 1: CẤU HÌNH API & EMAIL
+# LẤY BẢO MẬT TỪ KÉT SẮT (SECRETS)
 # ==========================================
-with st.sidebar:
-    st.header("⚙️ Cấu hình hệ thống")
-    openai_api_key = st.text_input("Nhập OpenAI API Key", type="password")
-    
-    st.markdown("---")
-    st.subheader("Cấu hình Email gửi đi")
-    sender_email = st.text_input("Email gửi", value="phungtam5965@gmail.com")
-    sender_password = st.text_input("Mật khẩu ứng dụng (App Password)", type="password")
-    
-    st.markdown("---")
-    st.info("💡 Đảm bảo bạn đã cài đặt wkhtmltopdf trên Windows để xuất file PDF.")
+try:
+    openai_api_key = st.secrets["OPENAI_API_KEY"]
+    sender_password = st.secrets["EMAIL_PASSWORD"]
+except KeyError:
+    st.error("⚠️ Hệ thống chưa tìm thấy Khóa Bảo Mật (Secrets). Thầy vui lòng vào Settings -> Secrets trên Streamlit Cloud để cấu hình.")
+    st.stop()
+
+sender_email = "phungtam5965@gmail.com"
 
 # ==========================================
-# PHẦN 2: HÀM TRÍCH XUẤT ẢNH BẰNG OPENAI
+# HÀM TRÍCH XUẤT ẢNH BẰNG OPENAI
 # ==========================================
 def extract_data_from_image(image_bytes, api_key):
     client = OpenAI(api_key=api_key)
     base64_image = base64.b64encode(image_bytes).decode('utf-8')
     
-    # Prompt bọc lót kỹ thuật cho AI
     prompt = """
-    Bạn là một chuyên gia phân tích chỉ số cơ thể y tế. Hãy đọc ảnh báo cáo Kizen 520 và trả về MỘT CHUỖI JSON CHUẨN (không có markdown, không có text dư thừa) chứa các key sau:
+    Bạn là một chuyên gia phân tích chỉ số cơ thể y tế. Hãy đọc ảnh báo cáo Kizen 520 và trả về MỘT CHUỖI JSON CHUẨN (không markdown, không text dư thừa) chứa các key sau:
     "name", "time", "age", "height", "score", "weight", "water", "protein", "mineral", "fat", "bmi", "fatrate", "vfat", "bmr", "muscle", "bioage", "stdweight", "ctrlweight", "ctrlfat".
     Nếu không thấy giá trị, điền "0".
     """
@@ -62,28 +93,36 @@ def extract_data_from_image(image_bytes, api_key):
     return json.loads(result_text)
 
 # ==========================================
-# PHẦN 3: GIAO DIỆN XỬ LÝ CHÍNH
+# GIAO DIỆN XỬ LÝ CHÍNH
 # ==========================================
+with st.sidebar:
+    st.image("assets/logo_mba.png", use_column_width=True) if os.path.exists("assets/logo_mba.png") else None
+    st.header("⚙️ Trạng thái hệ thống")
+    st.success("✅ Đã khóa bảo mật API Key")
+    st.success("✅ Đã kết nối Email phungtam5965")
+    st.markdown("---")
+    st.markdown("🌐 **Môi trường Cloud Ready**")
+
 uploaded_file = st.file_uploader("📥 Tải ảnh quét Kizen 520 lên đây (từ Telegram hoặc máy tính)", type=['png', 'jpg', 'jpeg'])
 
 if uploaded_file is not None:
-    st.image(uploaded_file, caption="Ảnh báo cáo gốc", width=400)
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        st.image(uploaded_file, caption="Ảnh báo cáo gốc", use_column_width=True)
     
-    if st.button("🚀 Bắt đầu trích xuất bằng AI"):
-        if not openai_api_key:
-            st.error("⚠️ Vui lòng nhập OpenAI API Key ở thanh bên trái!")
-        else:
-            with st.spinner("🤖 BỘ NÃO AI ĐANG XỬ LÝ DỮ LIỆU..."):
+    with col2:
+        if st.button("🚀 BẮT ĐẦU TRÍCH XUẤT BẰNG BỘ NÃO AI"):
+            with st.spinner("🤖 ĐANG PHÂN TÍCH CHỈ SỐ..."):
                 try:
                     # Trích xuất dữ liệu
                     extracted_data = extract_data_from_image(uploaded_file.getvalue(), openai_api_key)
-                    st.success("✅ Trích xuất thành công!")
+                    st.success("✅ Trích xuất thành công! Dữ liệu đã được nạp vào báo cáo.")
                     
                     # Đọc file HTML gốc
                     with open("index.html", "r", encoding="utf-8") as f:
                         html_content = f.read()
                     
-                    # Tiêm dữ liệu vừa quét được vào file HTML bằng Javascript
+                    # Tiêm dữ liệu vào HTML
                     injection_script = f"""
                     <script>
                         setTimeout(() => {{
@@ -98,8 +137,8 @@ if uploaded_file is not None:
                                 'val-protein': 'protein', 'p2-pro': 'protein',
                                 'val-mineral': 'mineral', 'p2-min': 'mineral',
                                 'val-fat': 'fat', 'p2-fat': 'fat', 'lbl-fat': 'fat',
-                                'val-bmi': 'bmi', 'p2-bmi': 'bmi', 'lbl-bmi': 'bmi',
-                                'val-fatrate': 'fatrate', 'p2-fatrate': 'fatrate', 'lbl-fatrate': 'fatrate',
+                                'lbl-bmi': 'bmi', 'p2-bmi': 'bmi',
+                                'lbl-fatrate': 'fatrate', 'p2-fatrate': 'fatrate',
                                 'val-vfat': 'vfat', 'p2-vfat': 'vfat',
                                 'val-bmr': 'bmr', 'p2-bmr': 'bmr',
                                 'lbl-muscle': 'muscle', 'p2-muscle': 'muscle', 'p2-muscle-block': 'muscle',
@@ -116,31 +155,15 @@ if uploaded_file is not None:
                     </script>
                     """
                     
-                    # Ráp script vào cuối file HTML
                     final_html = html_content.replace("</body>", injection_script + "</body>")
                     
-                    # Lưu tạm file HTML để tạo PDF
-                    with open("temp_report.html", "w", encoding="utf-8") as f:
-                        f.write(final_html)
-                        
-                    # Hiển thị trực tiếp giao diện tuyệt đẹp trên Streamlit
-                    st.markdown("### 📄 BẢN XEM TRƯỚC BÁO CÁO")
+                    # Hiển thị bản xem trước
+                    st.markdown("### 📄 BẢN XEM TRƯỚC BÁO CÁO (Nền Đen)")
                     components.html(final_html, height=800, scrolling=True)
                     
-                    # Chuyển đổi thành PDF
+                    # Chuyển đổi thành PDF bằng WeasyPrint (Tự động áp dụng nền trắng từ @media print)
                     with st.spinner("🖨️ Đang đóng gói file PDF bản in nền trắng..."):
-                        pdf_options = {
-                            'page-size': 'A4',
-                            'margin-top': '0mm', 'margin-right': '0mm',
-                            'margin-bottom': '0mm', 'margin-left': '0mm',
-                            'encoding': "UTF-8",
-                            'print-media-type': '' # Kích hoạt chế độ tiết kiệm mực
-                        }
-                        # CHÚ Ý: Cần trỏ đường dẫn tới wkhtmltopdf trên Windows nếu chạy nội bộ
-                        path_wkhtmltopdf = r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe'
-                        config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf) if os.path.exists(path_wkhtmltopdf) else None
-                        
-                        pdf_bytes = pdfkit.from_string(final_html, False, options=pdf_options, configuration=config)
+                        pdf_bytes = HTML(string=final_html, base_url=os.path.dirname(os.path.abspath(__file__))).write_pdf()
                         
                         st.download_button(
                             label="⬇️ TẢI PDF BÁO CÁO",
@@ -149,14 +172,12 @@ if uploaded_file is not None:
                             mime="application/pdf",
                         )
                         
-                    # Khối gửi Email
+                    # Gửi Email
                     st.markdown("---")
                     st.subheader("✉️ Gửi tự động cho Khách hàng")
                     customer_email = st.text_input("Nhập Email của khách hàng:")
                     if st.button("🚀 GỬI BÁO CÁO QUA EMAIL"):
-                        if not sender_password:
-                            st.error("⚠️ Thầy chưa nhập Mật khẩu ứng dụng Email ở cột trái!")
-                        elif not customer_email:
+                        if not customer_email:
                             st.error("⚠️ Vui lòng nhập email khách hàng!")
                         else:
                             try:
