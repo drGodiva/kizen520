@@ -7,8 +7,7 @@ from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from email import encoders
 from openai import OpenAI
-import pdfkit
-import os
+from weasyprint import HTML
 import streamlit.components.v1 as components
 
 # Cấu hình trang Streamlit
